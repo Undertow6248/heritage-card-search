@@ -69,7 +69,9 @@ HERITAGE_SETS = [
     # 2024
     "mkm", "otj", "blb", "dsk", "fdn",
     # 2025
-    "dft", "tdm", "eoe"
+    "dft", "tdm", "eoe",
+    # 2026
+    "ecl"
 ]
 
 print("Step 1: Downloading bulk card data...")
