@@ -4,10 +4,11 @@ A Flask web app for searching Magic: The Gathering cards legal in the Heritage f
 Uses Scryfall API for search and prefers default card printings when available.
 """
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 import requests
 import json
 import time
+import re
 
 app = Flask(__name__)
 
@@ -73,6 +74,12 @@ HERITAGE_CARD_IDS = {c["id"] for c in CARDS}
 
 print(f"Loaded {len(HERITAGE_CARD_NAMES)} unique Heritage cards")
 print(f"Found {len(DEFAULT_HERITAGE_CARDS)} cards with default Heritage printings (per Scryfall)")
+
+# Lowercase -> proper-case name map for case-insensitive deck checking
+HERITAGE_NAME_LOWER = {n.lower(): n for n in HERITAGE_CARD_NAMES}
+for banned in BANLIST:
+    if banned.lower() not in HERITAGE_NAME_LOWER:
+        HERITAGE_NAME_LOWER[banned.lower()] = banned
 
 # Create set of unique card names that are Heritage-legal
 HERITAGE_CARD_NAMES = set(FALLBACK_HERITAGE_CARDS.keys())
@@ -250,6 +257,90 @@ def home():
                           total_pages=total_pages,
                           total_cards=total_cards,
                           sort_by=sort_by)
+
+# ============================================================================
+# DECK LEGALITY CHECK ROUTE
+# ============================================================================
+
+def parse_decklist(text):
+    """
+    Parse a pasted decklist into a list of (quantity, card_name) tuples.
+    Handles formats like:
+      4 Lightning Bolt
+      4x Lightning Bolt
+      Lightning Bolt
+      // Sideboard  (section header - skipped)
+      Sideboard:   (section header - skipped)
+    """
+    entries = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        # Skip blank lines, comments, section headers
+        if not line or line.startswith("//") or line.lower().startswith("sideboard") or line.startswith("#"):
+            continue
+        # Match optional quantity prefix: "4 Foo", "4x Foo", or just "Foo"
+        m = re.match(r'^(\d+)[xX]?\s+(.+)$', line)
+        if m:
+            qty = int(m.group(1))
+            name = m.group(2).strip()
+        else:
+            qty = 1
+            name = line
+        # Strip trailing comments after " // "
+        name = re.split(r'\s+//', name)[0].strip()
+        if name:
+            entries.append((qty, name))
+    return entries
+
+
+@app.route("/check-deck", methods=["POST"])
+def check_deck():
+    """
+    Accept a JSON body with { "decklist": "..." } and return legality results.
+    Each entry in the response has:
+      - name, quantity, status: "legal" | "banned" | "not_in_format" | "unknown"
+    """
+    data = request.get_json(force=True)
+    decklist_text = data.get("decklist", "")
+    entries = parse_decklist(decklist_text)
+
+    results = []
+    total = 0
+    issues = 0
+
+    for qty, name in entries:
+        total += qty
+        # Case-insensitive name lookup
+        # Build a lowercase lookup map once (cached on first use)
+        matched_name = HERITAGE_NAME_LOWER.get(name.lower())
+
+        if matched_name is None:
+            status = "unknown"
+            issues += qty
+        elif matched_name in BANLIST:
+            status = "banned"
+            issues += qty
+        else:
+            status = "legal"
+
+        results.append({
+            "name": name,
+            "matched_name": matched_name,
+            "quantity": qty,
+            "status": status,
+        })
+
+    # Sort: issues first, then legal alphabetically
+    order = {"banned": 0, "not_in_format": 1, "unknown": 2, "legal": 3}
+    results.sort(key=lambda r: (order.get(r["status"], 9), r["name"].lower()))
+
+    return jsonify({
+        "results": results,
+        "total_cards": total,
+        "issue_count": issues,
+        "entry_count": len(results),
+    })
+
 
 # ============================================================================
 # RUN APP
