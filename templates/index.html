@@ -21,6 +21,45 @@
     .pagination a:hover { background: #e0e0e0; }
     .pagination .current { background: #4CAF50; color: white; font-weight: bold; }
     .pagination .disabled { opacity: 0.5; pointer-events: none; }
+
+    /* === Deck Checker Button === */
+    .deck-btn { background: #5c6bc0; color: white; border: none; border-radius: 6px; padding: 0.5rem 1.1rem; font-size: 0.95rem; cursor: pointer; font-weight: 600; letter-spacing: 0.02em; vertical-align: middle; }
+    .deck-btn:hover { background: #3949ab; }
+
+    /* === Modal === */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: white; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 580px; max-width: 96vw; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1.4rem 0.8rem; border-bottom: 1px solid #eee; }
+    .modal-header h2 { margin: 0; font-size: 1.2rem; }
+    .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #888; line-height: 1; padding: 0 0.2rem; }
+    .modal-close:hover { color: #333; }
+    .modal-body { padding: 1.2rem 1.4rem; overflow-y: auto; flex: 1; }
+    .modal-body textarea { width: 100%; box-sizing: border-box; height: 170px; font-family: monospace; font-size: 0.85rem; border: 1px solid #ccc; border-radius: 6px; padding: 0.6rem; resize: vertical; }
+    .hint { font-size: 0.78rem; color: #888; margin: 0.3rem 0 0.8rem 0; }
+    .btn-row { display: flex; align-items: center; gap: 0.5rem; }
+    .check-btn { background: #4CAF50; color: white; border: none; border-radius: 6px; padding: 0.5rem 1.3rem; font-size: 0.95rem; cursor: pointer; font-weight: 600; }
+    .check-btn:hover { background: #388e3c; }
+    .check-btn:disabled { background: #aaa; cursor: not-allowed; }
+    .clear-btn { background: none; border: 1px solid #ccc; border-radius: 6px; padding: 0.5rem 0.9rem; font-size: 0.9rem; cursor: pointer; color: #555; }
+    .clear-btn:hover { background: #f0f0f0; }
+    .deck-results { margin-top: 1.1rem; }
+    .deck-summary { padding: 0.65rem 0.9rem; border-radius: 6px; font-weight: 600; margin-bottom: 0.9rem; font-size: 0.95rem; }
+    .deck-summary.ok { background: #e8f5e9; color: #2e7d32; }
+    .deck-summary.bad { background: #fce4ec; color: #b71c1c; }
+    .deck-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .deck-table th { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 2px solid #eee; color: #555; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .deck-table td { padding: 0.35rem 0.6rem; border-bottom: 1px solid #f0f0f0; }
+    .deck-table tr:last-child td { border-bottom: none; }
+    .status-badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 10px; font-size: 0.75rem; font-weight: 700; }
+    .badge-legal { background: #e8f5e9; color: #2e7d32; }
+    .badge-banned { background: #fce4ec; color: #b71c1c; }
+    .badge-unknown { background: #fff3e0; color: #e65100; }
+    .row-banned td { font-weight: 600; }
+    .row-unknown td { color: #777; font-style: italic; }
+    .section-divider td { font-size: 0.75rem; text-transform: uppercase; color: #aaa; letter-spacing: 0.08em; padding: 0.5rem 0.6rem 0.2rem; font-weight: 700; background: #fafafa; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #ccc; border-top-color: #4CAF50; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-left: 0.3rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
   <script>
     function flipCard(event, cardId) {
@@ -35,28 +74,116 @@
         img.src = frontSrc;
       }
     }
+
+    /* ---- Deck Checker ---- */
+    function openDeckChecker() {
+      document.getElementById('deckModal').classList.add('open');
+      setTimeout(function(){ document.getElementById('deckInput').focus(); }, 50);
+    }
+    function closeDeckChecker() {
+      document.getElementById('deckModal').classList.remove('open');
+    }
+    function clearDeck() {
+      document.getElementById('deckInput').value = '';
+      document.getElementById('deckResults').innerHTML = '';
+    }
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeDeckChecker();
+    });
+
+    async function checkDeck() {
+      var text = document.getElementById('deckInput').value.trim();
+      if (!text) return;
+      var btn = document.getElementById('checkBtn');
+      var resultsEl = document.getElementById('deckResults');
+      btn.disabled = true;
+      btn.innerHTML = 'Checking\u2026 <span class="spinner"></span>';
+      resultsEl.innerHTML = '';
+      try {
+        var resp = await fetch('/check-deck', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ decklist: text })
+        });
+        var data = await resp.json();
+        renderResults(data, resultsEl);
+      } catch (err) {
+        resultsEl.innerHTML = '<p style="color:#b71c1c">Error contacting server. Is the app running?</p>';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Check Legality';
+      }
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function renderResults(data, el) {
+      var results = data.results;
+      var total_cards = data.total_cards;
+      var issue_count = data.issue_count;
+      var entry_count = data.entry_count;
+      var html = '';
+
+      if (issue_count === 0) {
+        html += '<div class="deck-summary ok">&#10003; Deck is legal! ' + entry_count + ' unique cards (' + total_cards + ' total).</div>';
+      } else {
+        html += '<div class="deck-summary bad">&#9888; ' + issue_count + ' issue' + (issue_count === 1 ? '' : 's') + ' found &mdash; ' + entry_count + ' unique cards (' + total_cards + ' total).</div>';
+      }
+
+      var banned  = results.filter(function(r){ return r.status === 'banned'; });
+      var unknown = results.filter(function(r){ return r.status === 'unknown'; });
+      var legal   = results.filter(function(r){ return r.status === 'legal'; });
+
+      function badge(status) {
+        if (status === 'legal')   return '<span class="status-badge badge-legal">Legal</span>';
+        if (status === 'banned')  return '<span class="status-badge badge-banned">Banned</span>';
+        return '<span class="status-badge badge-unknown">Not found</span>';
+      }
+
+      function rows(cards) {
+        return cards.map(function(r) {
+          var display = r.matched_name || r.name;
+          return '<tr class="row-' + r.status + '"><td>' + r.quantity + '</td><td>' + escHtml(display) + '</td><td>' + badge(r.status) + '</td></tr>';
+        }).join('');
+      }
+
+      html += '<table class="deck-table"><thead><tr><th>Qty</th><th>Card</th><th>Status</th></tr></thead><tbody>';
+      if (banned.length)  html += '<tr class="section-divider"><td colspan="3">Banned (' + banned.length + ')</td></tr>'  + rows(banned);
+      if (unknown.length) html += '<tr class="section-divider"><td colspan="3">Not found in Heritage (' + unknown.length + ')</td></tr>' + rows(unknown);
+      if (legal.length)   html += '<tr class="section-divider"><td colspan="3">Legal (' + legal.length + ')</td></tr>'    + rows(legal);
+      html += '</tbody></table>';
+
+      el.innerHTML = html;
+    }
   </script>
 </head>
 <body>
   <h1><a href="/" style="text-decoration: none; color: inherit; cursor: pointer;">Heritage Card Search</a></h1>
-  <form method="get" id="searchForm">
-    <input name="q" value="{{ query }}" placeholder="Search using Scryfall syntax" size="50">
-    <select name="sort" id="sortSelect" onchange="document.getElementById('searchForm').submit();">
-      <option value="">Sort by...</option>
-      <option value="name" {% if sort_by == "name" %}selected{% endif %}>Name</option>
-      <option value="released" {% if sort_by == "released" %}selected{% endif %}>Release Date</option>
-      <option value="rarity" {% if sort_by == "rarity" %}selected{% endif %}>Rarity</option>
-      <option value="color" {% if sort_by == "color" %}selected{% endif %}>Color</option>
-      <option value="power" {% if sort_by == "power" %}selected{% endif %}>Power</option>
-      <option value="toughness" {% if sort_by == "toughness" %}selected{% endif %}>Toughness</option>
-    </select>
-    <button>Search</button>
-  </form>
+
+  <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem; flex-wrap:wrap;">
+    <form method="get" id="searchForm" style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin:0;">
+      <input name="q" value="{{ query }}" placeholder="Search using Scryfall syntax" size="50">
+      <select name="sort" id="sortSelect" onchange="document.getElementById('searchForm').submit();">
+        <option value="">Sort by...</option>
+        <option value="name" {% if sort_by == "name" %}selected{% endif %}>Name</option>
+        <option value="released" {% if sort_by == "released" %}selected{% endif %}>Release Date</option>
+        <option value="rarity" {% if sort_by == "rarity" %}selected{% endif %}>Rarity</option>
+        <option value="color" {% if sort_by == "color" %}selected{% endif %}>Color</option>
+        <option value="power" {% if sort_by == "power" %}selected{% endif %}>Power</option>
+        <option value="toughness" {% if sort_by == "toughness" %}selected{% endif %}>Toughness</option>
+      </select>
+      <button>Search</button>
+    </form>
+    <button class="deck-btn" onclick="openDeckChecker()">&#x1F0CF; Check Deck Legality</button>
+  </div>
 
   {% if query == "" %}
     <div class="empty-state">
       <h2>Welcome to Heritage Card Search</h2>
       <p>Enter a search query above using Scryfall syntax.</p>
+      <p>Want to check if your whole deck is legal? Click <strong>Check Deck Legality</strong> above.</p>
       <p><em>Note: Large searches may take some time to complete.</em></p>
     </div>
   {% else %}
@@ -73,9 +200,8 @@
       {% for card in cards %}
         <div class="card">
           {% if card.card_faces and card.card_faces|length > 1 %}
-            {# Double-faced or split card #}
             {% if card.card_faces[0].image_uris and card.card_faces[1].image_uris %}
-              <button class="flip-button" onclick="flipCard(event, '{{ card.id }}')">↻ Flip</button>
+              <button class="flip-button" onclick="flipCard(event, '{{ card.id }}')">&#x21BB; Flip</button>
               <a href="{{ card.scryfall_uri }}" target="_blank">
                 <img id="img-{{ card.id }}" 
                      src="{{ card.card_faces[0].image_uris.normal }}" 
@@ -85,14 +211,12 @@
                 <p><b>{{ card.name }}</b></p>
               </a>
             {% elif card.image_uris %}
-              {# Split card with single combined image #}
               <a href="{{ card.scryfall_uri }}" target="_blank">
                 <img src="{{ card.image_uris.normal }}" alt="{{ card.name }}">
                 <p><b>{{ card.name }}</b></p>
               </a>
             {% endif %}
           {% else %}
-            {# Single-faced card #}
             <a href="{{ card.scryfall_uri }}" target="_blank">
               <img src="{{ card.image_uris.normal if card.image_uris and card.image_uris.normal else '' }}" alt="{{ card.name }}">
               <p><b>{{ card.name }}</b></p>
@@ -105,9 +229,9 @@
     {% if total_pages > 1 %}
       <div class="pagination">
         {% if page > 1 %}
-          <a href="?q={{ query }}&sort={{ sort_by }}&page={{ page - 1 }}">← Previous</a>
+          <a href="?q={{ query }}&sort={{ sort_by }}&page={{ page - 1 }}">&larr; Previous</a>
         {% else %}
-          <span class="disabled">← Previous</span>
+          <span class="disabled">&larr; Previous</span>
         {% endif %}
 
         {% for p in range(1, total_pages + 1) %}
@@ -121,12 +245,40 @@
         {% endfor %}
 
         {% if page < total_pages %}
-          <a href="?q={{ query }}&sort={{ sort_by }}&page={{ page + 1 }}">Next →</a>
+          <a href="?q={{ query }}&sort={{ sort_by }}&page={{ page + 1 }}">Next &rarr;</a>
         {% else %}
-          <span class="disabled">Next →</span>
+          <span class="disabled">Next &rarr;</span>
         {% endif %}
       </div>
     {% endif %}
   {% endif %}
+
+  <!-- ===================== DECK CHECKER MODAL ===================== -->
+  <div class="modal-overlay" id="deckModal" onclick="if(event.target===this)closeDeckChecker()">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>&#x1F0CF; Deck Legality Checker</h2>
+        <button class="modal-close" onclick="closeDeckChecker()" title="Close">&#x2715;</button>
+      </div>
+      <div class="modal-body">
+        <textarea id="deckInput" placeholder="Paste your decklist here, e.g.:
+
+4 Lightning Bolt
+4 Counterspell
+4 Dark Ritual
+1 Black Lotus
+// Sideboard
+2 Pyroblast"></textarea>
+        <p class="hint">Accepts: <code>4 Card Name</code>, <code>4x Card Name</code>, or just <code>Card Name</code>. Lines starting with <code>//</code> or <code>Sideboard</code> are ignored.</p>
+        <div class="btn-row">
+          <button class="check-btn" id="checkBtn" onclick="checkDeck()">Check Legality</button>
+          <button class="clear-btn" onclick="clearDeck()">Clear</button>
+        </div>
+        <div class="deck-results" id="deckResults"></div>
+      </div>
+    </div>
+  </div>
+  <!-- ============================================================== -->
+
 </body>
 </html>
