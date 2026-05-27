@@ -1,3 +1,6 @@
+PLEASE NOTE: THIS PROJECT WAS VIBE CODED WITH NO CODING EXPERIENCE.
+If anyone who actually knows how to code would like to help maintain/fix this project, please join the Heritage Discord server linked on the format's website.
+
 # Heritage Card Search
 
 A searchable database for Magic: The Gathering's Heritage format, using the Scryfall API.
